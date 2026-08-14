@@ -5,6 +5,14 @@
   "main": "electron/main.js",
   "license": "MIT",
   "author": "dsh-desktop contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/he110Warudo/dsh-desktop.git"
+  },
+  "homepage": "https://github.com/he110Warudo/dsh-desktop",
+  "bugs": {
+    "url": "https://github.com/he110Warudo/dsh-desktop/issues"
+  },
   "keywords": [
     "dsh",
     "deepseek",
