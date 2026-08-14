@@ -1,0 +1,71 @@
+{
+  "name": "dsh-desktop",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness 桌面 GUI 客户端:双击启动,自动拉起 dsh web 并在桌面窗口中打开",
+  "main": "electron/main.js",
+  "license": "MIT",
+  "author": "dsh-desktop contributors",
+  "keywords": [
+    "dsh",
+    "deepseek",
+    "harness",
+    "desktop",
+    "electron",
+    "gui",
+    "dsh-plugin"
+  ],
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test --test-isolation=none test/dsh-manager.test.js",
+    "smoke": "node test/smoke-launch.js",
+    "dist": "electron-builder",
+    "dist:dir": "electron-builder --dir"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.1.0-rc.6"
+  },
+  "build": {
+    "appId": "ai.deepseek.dshdesktop",
+    "productName": "DSH Desktop",
+    "asar": false,
+    "npmRebuild": false,
+    "files": [
+      "electron/**/*",
+      "splash/**/*",
+      "package.json",
+      "LICENSE"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "devDependencies": {
+    "electron": "^43.4.0",
+    "electron-builder": "^26.15.3"
+  },
+  "allowScripts": {
+    "@deepseek-ai/dsh-subprocess-local@0.1.0-rc.6": true,
+    "koffi@3.1.5": true,
+    "node-pty@1.1.0": true
+  }
+}

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:"
+    />
+    <title>DSH Desktop</title>
+    <link rel="stylesheet" href="splash.css" />
+  </head>
+  <body>
+    <main class="card">
+      <header class="brand">
+        <span class="mark">◈</span>
+        <span class="name">DSH <em>Desktop</em></span>
+        <span class="version" id="version"></span>
+      </header>
+
+      <!-- 启动中 -->
+      <section id="view-loading" class="view" hidden>
+        <div class="spinner" aria-hidden="true"></div>
+        <p class="status" id="status-line">正在启动…</p>
+        <p class="hint" id="hint-line">正在定位 dsh 命令</p>
+      </section>
+
+      <!-- 出错 -->
+      <section id="view-error" class="view" hidden>
+        <div class="error-icon" aria-hidden="true">!</div>
+        <p class="error-title">dsh 启动失败</p>
+        <p class="error-message" id="error-message"></p>
+        <pre class="log" id="error-log"></pre>
+        <div class="actions">
+          <button class="primary" id="btn-retry">重试</button>
+          <button id="btn-quit">退出</button>
+        </div>
+        <div class="links">
+          <a href="#" id="link-copy">复制日志</a>
+          <a href="#" id="link-open">打开日志文件</a>
+        </div>
+      </section>
+
+      <footer class="foot">
+        <span id="foot-line">DeepSeek Harness 桌面客户端</span>
+        <details class="logbox">
+          <summary>启动日志</summary>
+          <pre id="foot-log"></pre>
+        </details>
+      </footer>
+    </main>
+    <script src="splash.js"></script>
+  </body>
+</html>
