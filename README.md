@@ -1,5 +1,7 @@
 # DSH Desktop
 
+> 仓库:<https://github.com/he110Warudo/dsh-desktop> · Topic:`dsh-plugin` · License:MIT
+
 DeepSeek Harness 桌面 GUI 客户端。**双击启动,自动拉起 `dsh web`,并在桌面窗口中打开 DSH Web 界面**;退出应用时自动停止 dsh(包括整个子进程树)。
 
 - 零端口冲突:以 `--port 0` 启动,由系统分配空闲端口,从 dsh 输出中解析真实地址
