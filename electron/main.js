@@ -8,7 +8,8 @@
  *   2. 显示 splash(启动/状态/错误页),同步拉起 dsh web
  *   3. 解析到 URL 后打开主窗口并导航到 DSH Web GUI
  *   4. dsh 崩溃 → 主窗口切回状态页,可一键重启
- *   5. 退出时停止 dsh(Windows 下清理整个进程树);另有 guard 看门狗
+ *   5. 关闭窗口 → 隐藏到系统托盘,dsh 后台常驻;托盘菜单可恢复窗口或退出
+ *   6. 退出时停止 dsh(Windows 下清理整个进程树);另有 guard 看门狗
  *      兜底任务管理器强杀等 before-quit 无法执行的情况
  *
  * 窗口外观:隐藏系统标题栏(titleBarStyle:'hidden'),原生窗口按钮
@@ -16,7 +17,7 @@
  * DSH 主题(亮/暗);页面顶部注入一条透明拖拽区用于移动窗口。
  */
 
-const { app, BrowserWindow, ipcMain, clipboard, shell, Menu, dialog, nativeTheme } = require('electron')
+const { app, BrowserWindow, ipcMain, clipboard, shell, Menu, dialog, nativeTheme, Tray, nativeImage } = require('electron')
 const { spawn } = require('node:child_process')
 const path = require('node:path')
 const fs = require('node:fs')
@@ -26,6 +27,8 @@ const { DshManager } = require('./dsh-manager')
 const APP_ID = 'ai.deepseek.dshwindow'
 const SPLASH_HTML = path.join(__dirname, '..', 'splash', 'index.html')
 const GUARD_JS = path.join(__dirname, 'guard.js')
+const TRAY_ICON = path.join(__dirname, '..', 'assets', 'tray.ico')
+const APP_ICON = path.join(__dirname, '..', 'assets', 'icon.png')
 
 // DSH 设计系统 token(取自 @deepseek-ai/dsh-client-ui-theme design-platform.css)
 const CHROME_LIGHT = { color: '#ffffff', symbolColor: '#0f1115', backgroundColor: '#ffffff' }
@@ -44,6 +47,7 @@ const DEFAULTS = {
   dshArgs: [],
   startupTimeoutSec: 90,
   openDevTools: false,
+  closeToTray: true,
   windowBounds: null
 }
 
@@ -66,6 +70,7 @@ function loadSettings() {
     dshArgs: Array.isArray(merged.dshArgs) ? merged.dshArgs.map(String) : [],
     startupTimeoutSec: Number.isFinite(merged.startupTimeoutSec) ? merged.startupTimeoutSec : DEFAULTS.startupTimeoutSec,
     openDevTools: Boolean(merged.openDevTools),
+    closeToTray: merged.closeToTray !== false,
     windowBounds:
       merged.windowBounds && typeof merged.windowBounds === 'object' ? merged.windowBounds : null
   }
@@ -121,9 +126,10 @@ let splashWin = null
 let appWin = null
 let quitting = false
 let appWindowUrl = null
-let everReady = false
 let lastFailureMessage = ''
 let guard = null
+let tray = null
+let hiddenToTray = false
 
 // ---------------------------------------------------------------- guard(看门狗)
 
@@ -153,6 +159,46 @@ function stopGuard() {
   guard = null
 }
 
+// ---------------------------------------------------------------- tray
+
+/** 恢复/创建可见窗口(托盘点击、任务栏激活、二次启动共用)。 */
+function showWindow() {
+  hiddenToTray = false
+  const win =
+    appWin && !appWin.isDestroyed() ? appWin : splashWin && !splashWin.isDestroyed() ? splashWin : null
+  if (win) {
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+    return
+  }
+  if (manager && manager.ready && manager.url) {
+    createAppWindow(manager.url)
+    prepareDshPage(appWin)
+  } else {
+    createSplashWindow()
+    if (!manager || !manager.isRunning()) startManager()
+  }
+}
+
+function createTray() {
+  try {
+    tray = new Tray(nativeImage.createFromPath(TRAY_ICON))
+  } catch (error) {
+    logLine(`[tray] 创建失败: ${error.message}`)
+    return
+  }
+  tray.setToolTip('DSH Window')
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: '显示窗口', click: () => showWindow() },
+    { label: '重新启动 dsh', click: () => requestDshRestart() },
+    { type: 'separator' },
+    { label: '退出', click: () => app.quit() }
+  ]))
+  tray.on('click', () => showWindow())
+  tray.on('double-click', () => showWindow())
+}
+
 // ---------------------------------------------------------------- windows
 
 function chromeOptions() {
@@ -164,6 +210,7 @@ function createSplashWindow() {
   splashWin = new BrowserWindow({
     width: 560,
     height: 430,
+    icon: APP_ICON,
     resizable: false,
     show: false,
     title: 'DSH Window',
@@ -183,6 +230,12 @@ function createSplashWindow() {
   splashWin.on('closed', () => {
     splashWin = null
   })
+  splashWin.on('close', (event) => {
+    if (quitting || !settings.closeToTray) return
+    hiddenToTray = true
+    event.preventDefault()
+    splashWin.hide()
+  })
 }
 
 function createAppWindow(url) {
@@ -191,6 +244,7 @@ function createAppWindow(url) {
   appWin = new BrowserWindow({
     width: bounds && Number.isFinite(bounds.width) ? bounds.width : 1400,
     height: bounds && Number.isFinite(bounds.height) ? bounds.height : 900,
+    icon: APP_ICON,
     x: bounds && Number.isFinite(bounds.x) ? bounds.x : undefined,
     y: bounds && Number.isFinite(bounds.y) ? bounds.y : undefined,
     minWidth: 900,
@@ -236,13 +290,18 @@ function createAppWindow(url) {
 
   if (settings.openDevTools) appWin.webContents.openDevTools({ mode: 'detach' })
   appWin.once('ready-to-show', () => appWin && appWin.show())
-  appWin.on('close', () => {
-    if (!quitting && appWin) {
+  appWin.on('close', (event) => {
+    if (appWin) {
       try {
         saveSettings({ windowBounds: appWin.getNormalBounds() })
       } catch {
         /* 窗口已销毁时忽略 */
       }
+    }
+    if (!quitting && settings.closeToTray) {
+      hiddenToTray = true
+      event.preventDefault()
+      appWin.hide()
     }
   })
   appWin.on('closed', () => {
@@ -337,11 +396,10 @@ function startManager() {
   manager.on('log', ({ line }) => broadcast({ kind: 'log', line }))
   manager.on('ready', ({ url }) => {
     logLine(`[dsh] 就绪: ${url}`)
-    everReady = true
     if (appWin) {
       appWindowUrl = url
       appWin.loadURL(url).catch(() => {})
-    } else {
+    } else if (!hiddenToTray) {
       createAppWindow(url)
       prepareDshPage(appWin)
     }
@@ -358,7 +416,7 @@ function startManager() {
       setTimeout(() => app.quit(), 9000)
     }
     if (splashWin) {
-      splashWin.close()
+      splashWin.destroy()
       splashWin = null
     }
   })
@@ -494,12 +552,7 @@ if (!gotLock) {
   app.quit()
 } else {
   app.setAppUserModelId(APP_ID)
-  app.on('second-instance', () => {
-    const win = appWin || splashWin
-    if (!win) return
-    if (win.isMinimized()) win.restore()
-    win.focus()
-  })
+  app.on('second-instance', () => showWindow())
 
   app.whenReady().then(() => {
     settings = loadSettings()
@@ -509,6 +562,7 @@ if (!gotLock) {
     else if (settings.dshCommand) logLine(`设置 dshCommand: ${settings.dshCommand}`)
     buildMenu()
     wireIpc()
+    createTray()
     createSplashWindow()
     startManager()
     if (process.env.DSH_WINDOW_SMOKE) {
@@ -520,18 +574,10 @@ if (!gotLock) {
     }
   })
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      if (everReady) startManager()
-      else {
-        createSplashWindow()
-        if (!manager || !manager.isRunning()) startManager()
-      }
-    }
-  })
+  app.on('activate', () => showWindow())
 
   app.on('window-all-closed', () => {
-    app.quit()
+    if (!settings || !settings.closeToTray) app.quit()
   })
 
   app.on('before-quit', async (event) => {
@@ -550,5 +596,9 @@ if (!gotLock) {
 
   app.on('will-quit', () => {
     stopGuard()
+    if (tray) {
+      tray.destroy()
+      tray = null
+    }
   })
 }

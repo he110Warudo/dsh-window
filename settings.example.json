@@ -3,5 +3,6 @@
   "dshArgs": [],
   "startupTimeoutSec": 90,
   "openDevTools": false,
+  "closeToTray": true,
   "windowBounds": null
 }

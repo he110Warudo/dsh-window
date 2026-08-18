@@ -32,6 +32,7 @@
 - 🔄 **崩溃自愈**：dsh 意外退出后窗口自动切回状态页，可一键重启；会话数据保存在 `$DSH_HOME`，不丢失。
 - 🪟 **界面与 DSH Web GUI 一致**：启动页/状态页使用同一套设计 token（亮/暗跟随系统）；隐藏系统标题栏，窗口按钮浮于界面右上角且颜色跟随 DSH 主题；内容区顶部注入透明拖拽条用于移动窗口。
 - 🖥️ **单实例**：重复启动只会聚焦已有窗口，避免两个 dsh 同时写 profile。
+- 📌 **托盘常驻**：关闭窗口后应用驻留系统托盘，dsh 继续后台运行；托盘菜单可显示窗口、重启 dsh、退出应用。
 - 👁️ **看门狗**：主进程被任务管理器等强杀时，guard 进程自动清理 dsh 进程树，不留孤儿。
 - 📄 **完整日志**：启动日志实时展示，可复制、可打开日志文件（`%APPDATA%/dsh-window/dsh-window.log`）。
 
@@ -58,6 +59,7 @@ npm start     # 启动窗口客户端
 
 - 打包版双击 `DSH Window.exe` 即可运行；开发版使用 `npm start`。
 - 单实例运行：重复启动不会开新实例，而是聚焦已有窗口。
+- 关闭窗口不会退出应用：dsh 继续在后台运行，应用驻留系统托盘；单击托盘图标或从托盘菜单选择「显示窗口」即可恢复。若希望关闭即退出，可在设置里将 `closeToTray` 设为 `false`。
 - 快捷键：
   - `Ctrl+Shift+R`：重新启动 dsh；
   - `Ctrl+Shift+O`：在系统浏览器中打开当前界面；
@@ -74,6 +76,7 @@ npm start     # 启动窗口客户端
 | `dshArgs` | `string[]` | `[]` | 追加给 `dsh web` 的参数，如 `["--trusted-host", "192.168.1.5"]`；已含 `--port`/`--host` 时不再注入默认值 |
 | `startupTimeoutSec` | `number` | `90` | 等待 dsh 就绪的超时（秒） |
 | `openDevTools` | `boolean` | `false` | 启动时打开开发者工具 |
+| `closeToTray` | `boolean` | `true` | 关闭窗口时隐藏到托盘并保持 dsh 运行；设为 `false` 则关闭窗口即退出应用 |
 | `windowBounds` | `object \| null` | `null` | 窗口位置/大小（自动保存，一般不用手改） |
 
 等价环境变量：
@@ -112,6 +115,7 @@ DSH-Window/
 │   ├── dsh-manager.js   dsh 子进程管理（纯 Node，可独立测试）
 │   └── guard.js         dsh 看门狗（主进程被强杀时兜底清理进程树）
 ├── splash/              启动/状态/错误页（与 DSH Web GUI 同款视觉）
+├── assets/              托盘图标与应用图标
 ├── test/                单元测试与冒烟脚本
 ├── package.json
 └── settings.example.json
@@ -127,7 +131,7 @@ DSH-Window/
 
 ## 路线图
 
-- [ ] 托盘图标与后台常驻（关闭窗口不停止 dsh）
+- [x] 托盘图标与后台常驻（关闭窗口不停止 dsh）
 - [ ] 应用图标与安装包签名
 - [ ] 多 profile 切换（web / headless 快捷启动）
 - [ ] 自动更新

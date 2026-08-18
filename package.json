@@ -40,6 +40,7 @@
     "files": [
       "electron/**/*",
       "splash/**/*",
+      "assets/**/*",
       "package.json",
       "LICENSE"
     ],
