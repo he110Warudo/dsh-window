@@ -3,7 +3,7 @@
 /**
  * guard — dsh 子进程看门狗。
  *
- * 由 dsh-desktop 主进程拉起,监视两个 PID:
+ * 由 dsh-window 主进程拉起,监视两个 PID:
  *   1. 父进程(electron)先消失 → 立即 taskkill 清理 dsh 进程树,然后自杀。
  *      (覆盖任务管理器强杀 / 主进程崩溃等 before-quit 无法执行的情况)
  *   2. dsh 先消失 → 正常退出。

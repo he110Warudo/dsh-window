@@ -32,7 +32,7 @@ const PHASE_TEXT = {
 }
 
 const HINT_TEXT = {
-  resolving: '自动解析 dsh 命令,也可通过设置文件或环境变量 DSH_DESKTOP_DSH 指定',
+  resolving: '自动解析 dsh 命令,也可通过设置文件或环境变量 DSH_WINDOW_DSH 指定',
   starting: '使用 --port 0 由系统分配空闲端口,避免冲突',
   waiting: '首次启动需要初始化 profile,可能稍慢',
   crashed: '可以重启 dsh,或查看日志排查',
@@ -56,7 +56,7 @@ function render() {
     viewLoading.hidden = false
     viewError.hidden = true
     statusLine.textContent = text
-    hintLine.textContent = HINT_TEXT[lastPhase] || 'DeepSeek Harness 桌面客户端'
+    hintLine.textContent = HINT_TEXT[lastPhase] || 'DeepSeek Harness 窗口客户端'
     if (lastPhase === 'ready') {
       statusLine.textContent = 'dsh 已就绪'
       hintLine.textContent = '正在打开界面…'
@@ -80,24 +80,24 @@ function applyStatus(payload) {
 }
 
 async function init() {
-  const state = await window.dshDesktop.getState()
+  const state = await window.dshWindow.getState()
   logs = state.logs || []
   lastPhase = state.phase || 'resolving'
   if (state.message) lastMessage = state.message
   if (state.version) versionEl.textContent = `v${state.version}`
   render()
-  window.dshDesktop.onStatus(applyStatus)
+  window.dshWindow.onStatus(applyStatus)
 
   $('btn-retry').addEventListener('click', () => {
     logs = []
     lastPhase = 'starting'
     render()
-    window.dshDesktop.restart()
+    window.dshWindow.restart()
   })
-  $('btn-quit').addEventListener('click', () => window.dshDesktop.quit())
+  $('btn-quit').addEventListener('click', () => window.dshWindow.quit())
   $('link-copy').addEventListener('click', async (e) => {
     e.preventDefault()
-    const ok = await window.dshDesktop.copyLogs()
+    const ok = await window.dshWindow.copyLogs()
     const el = $('link-copy')
     el.textContent = ok ? '已复制 ✓' : '无日志'
     setTimeout(() => {
@@ -106,7 +106,7 @@ async function init() {
   })
   $('link-open').addEventListener('click', (e) => {
     e.preventDefault()
-    window.dshDesktop.openLogs()
+    window.dshWindow.openLogs()
   })
 }
 

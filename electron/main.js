@@ -1,7 +1,7 @@
 'use strict'
 
 /**
- * dsh-desktop — Electron 主进程。
+ * dsh-window — Electron 主进程。
  *
  * 生命周期:
  *   1. 单实例锁(重复启动时聚焦已有窗口)
@@ -23,7 +23,7 @@ const fs = require('node:fs')
 const { pathToFileURL } = require('node:url')
 const { DshManager } = require('./dsh-manager')
 
-const APP_ID = 'ai.deepseek.dshdesktop'
+const APP_ID = 'ai.deepseek.dshwindow'
 const SPLASH_HTML = path.join(__dirname, '..', 'splash', 'index.html')
 const GUARD_JS = path.join(__dirname, 'guard.js')
 
@@ -87,7 +87,7 @@ function saveSettings(patch) {
 const MAX_LOG_BYTES = 512 * 1024
 
 function logPath() {
-  return path.join(app.getPath('userData'), 'dsh-desktop.log')
+  return path.join(app.getPath('userData'), 'dsh-window.log')
 }
 
 function logLine(text) {
@@ -166,7 +166,7 @@ function createSplashWindow() {
     height: 430,
     resizable: false,
     show: false,
-    title: 'DSH Desktop',
+    title: 'DSH Window',
     autoHideMenuBar: true,
     backgroundColor: chrome.backgroundColor,
     titleBarStyle: 'hidden',
@@ -196,7 +196,7 @@ function createAppWindow(url) {
     minWidth: 900,
     minHeight: 600,
     show: false,
-    title: 'DSH Desktop',
+    title: 'DSH Window',
     backgroundColor: chrome.backgroundColor,
     titleBarStyle: 'hidden',
     titleBarOverlay: { color: chrome.color, symbolColor: chrome.symbolColor, height: 36 },
@@ -273,9 +273,9 @@ function prepareDshPage(win) {
     const right = DRAG_STRIP.right
     wc
       .executeJavaScript(`(() => {
-        document.getElementById('dsh-desktop-drag-strip')?.remove();
+        document.getElementById('dsh-window-drag-strip')?.remove();
         const el = document.createElement('div');
-        el.id = 'dsh-desktop-drag-strip';
+        el.id = 'dsh-window-drag-strip';
         el.style.cssText = 'position:fixed;top:${DRAG_STRIP.top}px;left:${DRAG_STRIP.left}px;right:calc(${right});height:${DRAG_STRIP.height}px;-webkit-app-region:drag;z-index:2147483000;';
         document.body.appendChild(el);
         return true;
@@ -325,7 +325,7 @@ function broadcast(payload) {
 
 function startManager() {
   manager = new DshManager({
-    command: process.env.DSH_DESKTOP_DSH || settings.dshCommand || null,
+    command: process.env.DSH_WINDOW_DSH || settings.dshCommand || null,
     args: settings.dshArgs,
     timeoutMs: Math.max(10, settings.startupTimeoutSec) * 1000
   })
@@ -348,11 +348,11 @@ function startManager() {
     // 看门狗:主进程被强杀时兜底清理 dsh 进程树
     if (manager.child && manager.child.pid) startGuard(manager.child.pid)
 
-    if (process.env.DSH_DESKTOP_SMOKE) {
-      console.log(`DSH_DESKTOP_SMOKE_READY ${url}`)
+    if (process.env.DSH_WINDOW_SMOKE) {
+      console.log(`DSH_WINDOW_SMOKE_READY ${url}`)
       if (appWin) {
         appWin.webContents.on('did-finish-load', () => {
-          console.log(`DSH_DESKTOP_SMOKE_PAGE_LOADED ${appWin.webContents.getURL()}`)
+          console.log(`DSH_WINDOW_SMOKE_PAGE_LOADED ${appWin.webContents.getURL()}`)
         })
       }
       setTimeout(() => app.quit(), 9000)
@@ -365,8 +365,8 @@ function startManager() {
   manager.on('error', ({ message }) => {
     logLine(`[dsh] 错误: ${message}`)
     lastFailureMessage = message
-    if (process.env.DSH_DESKTOP_SMOKE) {
-      console.log(`DSH_DESKTOP_SMOKE_ERROR ${message}`)
+    if (process.env.DSH_WINDOW_SMOKE) {
+      console.log(`DSH_WINDOW_SMOKE_ERROR ${message}`)
       for (const line of manager.getLogs().slice(-15)) console.log(`  ${line}`)
     }
     broadcast({ kind: 'state', phase: 'error', message })
@@ -472,13 +472,13 @@ function buildMenu() {
         },
         { type: 'separator' },
         {
-          label: '关于 DSH Desktop',
+          label: '关于 DSH Window',
           click: () =>
             dialog.showMessageBox({
               type: 'info',
               title: '关于',
-              message: 'DSH Desktop',
-              detail: `DeepSeek Harness 桌面客户端 v${app.getVersion()}\n\n自动拉起 dsh web 并嵌入窗口;退出应用时自动停止 dsh。`
+              message: 'DSH Window',
+              detail: `DeepSeek Harness 窗口客户端 v${app.getVersion()}\n\n自动拉起 dsh web 并嵌入窗口;退出应用时自动停止 dsh。`
             })
         }
       ]
@@ -503,18 +503,18 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     settings = loadSettings()
-    logLine(`dsh-desktop v${app.getVersion()} 启动`)
+    logLine(`dsh-window v${app.getVersion()} 启动`)
     logLine(`设置文件: ${settingsPath()}`)
-    if (process.env.DSH_DESKTOP_DSH) logLine(`环境变量 DSH_DESKTOP_DSH: ${process.env.DSH_DESKTOP_DSH}`)
+    if (process.env.DSH_WINDOW_DSH) logLine(`环境变量 DSH_WINDOW_DSH: ${process.env.DSH_WINDOW_DSH}`)
     else if (settings.dshCommand) logLine(`设置 dshCommand: ${settings.dshCommand}`)
     buildMenu()
     wireIpc()
     createSplashWindow()
     startManager()
-    if (process.env.DSH_DESKTOP_SMOKE) {
+    if (process.env.DSH_WINDOW_SMOKE) {
       // 冒烟模式硬上限:60s 内无论成败都退出
       setTimeout(() => {
-        console.log('DSH_DESKTOP_SMOKE_TIMEOUT')
+        console.log('DSH_WINDOW_SMOKE_TIMEOUT')
         app.quit()
       }, 60_000)
     }

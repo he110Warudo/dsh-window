@@ -1,4 +1,4 @@
-/* dsh-desktop 启动页 —— 视觉与 DeepSeek Harness Web GUI 对齐。
+/* dsh-window 启动页 —— 视觉与 DeepSeek Harness Web GUI 对齐。
  * 设计 token 取自 @deepseek-ai/dsh-client-ui-theme/design-platform.css:
  * 亮暗主题跟随系统 prefers-color-scheme(与 DSH 默认 "跟随系统" 行为一致)。 */
 

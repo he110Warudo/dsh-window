@@ -7,7 +7,7 @@
 
 const { contextBridge, ipcRenderer } = require('electron')
 
-contextBridge.exposeInMainWorld('dshDesktop', {
+contextBridge.exposeInMainWorld('dshWindow', {
   /** 订阅状态推送,返回取消订阅函数。 */
   onStatus(callback) {
     const listener = (_event, payload) => callback(payload)

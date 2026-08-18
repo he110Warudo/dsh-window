@@ -1,23 +1,23 @@
 {
-  "name": "dsh-desktop",
+  "name": "dsh-window",
   "version": "0.1.0",
-  "description": "DeepSeek Harness 桌面 GUI 客户端:双击启动,自动拉起 dsh web 并在桌面窗口中打开",
+  "description": "DeepSeek Harness 窗口 GUI 客户端:双击启动,自动拉起 dsh web 并在应用窗口中打开",
   "main": "electron/main.js",
   "license": "MIT",
-  "author": "dsh-desktop contributors",
+  "author": "dsh-window contributors",
   "repository": {
     "type": "git",
-    "url": "https://github.com/he110Warudo/dsh-desktop.git"
+    "url": "https://github.com/he110Warudo/dsh-window.git"
   },
-  "homepage": "https://github.com/he110Warudo/dsh-desktop",
+  "homepage": "https://github.com/he110Warudo/dsh-window",
   "bugs": {
-    "url": "https://github.com/he110Warudo/dsh-desktop/issues"
+    "url": "https://github.com/he110Warudo/dsh-window/issues"
   },
   "keywords": [
     "dsh",
     "deepseek",
     "harness",
-    "desktop",
+    "window",
     "electron",
     "gui",
     "dsh-plugin"
@@ -33,8 +33,8 @@
     "@deepseek-ai/dsh": "0.1.0-rc.6"
   },
   "build": {
-    "appId": "ai.deepseek.dshdesktop",
-    "productName": "DSH Desktop",
+    "appId": "ai.deepseek.dshwindow",
+    "productName": "DSH Window",
     "asar": false,
     "npmRebuild": false,
     "files": [

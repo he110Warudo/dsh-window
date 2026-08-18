@@ -8,7 +8,7 @@
  *     node test/smoke-launch.js --stdio  沙箱兼容模式:探测空闲端口 + stdio 继承 + HTTP 轮询
  *
  * DSH_HOME 未设置时指向 <项目>/.smoke/dsh-home(避免污染 ~/.dsh)。
- * 可通过环境变量 DSH_DESKTOP_DSH / DSH_DESKTOP_NODE 指定 dsh 入口与 node。
+ * 可通过环境变量 DSH_WINDOW_DSH / DSH_WINDOW_NODE 指定 dsh 入口与 node。
  */
 
 const { spawn } = require('node:child_process')
@@ -35,8 +35,8 @@ function setupEnv() {
 
 /** 只依赖文件系统的 dsh 入口解析(沙箱内不能用 where.exe)。 */
 function findDshEntry() {
-  if (process.env.DSH_DESKTOP_DSH && fs.existsSync(process.env.DSH_DESKTOP_DSH)) {
-    return process.env.DSH_DESKTOP_DSH
+  if (process.env.DSH_WINDOW_DSH && fs.existsSync(process.env.DSH_WINDOW_DSH)) {
+    return process.env.DSH_WINDOW_DSH
   }
   const dirs = scanNpxCache()
   for (const dir of dirs) {
@@ -47,8 +47,8 @@ function findDshEntry() {
 }
 
 function findNode() {
-  if (process.env.DSH_DESKTOP_NODE && fs.existsSync(process.env.DSH_DESKTOP_NODE)) {
-    return process.env.DSH_DESKTOP_NODE
+  if (process.env.DSH_WINDOW_NODE && fs.existsSync(process.env.DSH_WINDOW_NODE)) {
+    return process.env.DSH_WINDOW_NODE
   }
   return process.execPath
 }
@@ -84,9 +84,9 @@ async function pollHttp(url, timeoutMs) {
 
 async function runManaged() {
   const entry = findDshEntry()
-  if (!entry) throw new Error('未找到 dsh 入口(尝试:DSH_DESKTOP_DSH / npx 缓存 / 内置依赖)')
+  if (!entry) throw new Error('未找到 dsh 入口(尝试:DSH_WINDOW_DSH / npx 缓存 / 内置依赖)')
   console.log(`[smoke] dsh 入口: ${entry}`)
-  process.env.DSH_DESKTOP_NODE = findNode()
+  process.env.DSH_WINDOW_NODE = findNode()
   const manager = new DshManager({ command: entry, timeoutMs: TIMEOUT_MS })
   manager.on('log', ({ line }) => process.stderr.write(`  ${line}\n`))
   const readyP = manager.waitReady()
@@ -102,7 +102,7 @@ async function runManaged() {
 
 async function runStdio() {
   const entry = findDshEntry()
-  if (!entry) throw new Error('未找到 dsh 入口(尝试:DSH_DESKTOP_DSH / npx 缓存 / 内置依赖)')
+  if (!entry) throw new Error('未找到 dsh 入口(尝试:DSH_WINDOW_DSH / npx 缓存 / 内置依赖)')
   console.log(`[smoke] dsh 入口: ${entry}`)
   const nodePath = findNode()
   const port = await probeFreePort()

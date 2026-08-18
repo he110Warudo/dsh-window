@@ -261,7 +261,7 @@ class DshManager extends EventEmitter {
       `找不到可用的 dsh 命令。已尝试:\n${detail || '  (无)'}\n\n` +
         '解决办法:\n' +
         '  1. 在设置文件里配置 "dshCommand" 指向 dsh 的 bin.js 或命令名;\n' +
-        '  2. 或设置环境变量 DSH_DESKTOP_DSH;\n' +
+        '  2. 或设置环境变量 DSH_WINDOW_DSH;\n' +
         '  3. 或全局安装:npm install -g @deepseek-ai/dsh'
     )
   }
@@ -311,8 +311,8 @@ class DshManager extends EventEmitter {
   }
 
   async _findNode() {
-    if (process.env.DSH_DESKTOP_NODE && isFile(process.env.DSH_DESKTOP_NODE)) {
-      return { path: process.env.DSH_DESKTOP_NODE, extraEnv: null }
+    if (process.env.DSH_WINDOW_NODE && isFile(process.env.DSH_WINDOW_NODE)) {
+      return { path: process.env.DSH_WINDOW_NODE, extraEnv: null }
     }
     const onPath = await this._findOnPath('node')
     if (onPath) return { path: onPath, extraEnv: null }
@@ -387,7 +387,7 @@ class DshManager extends EventEmitter {
     if (!hasFlag('--port')) args.push('--port', '0')
 
     this._setPhase('starting', `正在启动 dsh web…(${spec.label})`)
-    this._pushLog('dsh-desktop', `启动命令: ${JSON.stringify(args)} (${spec.label})`)
+    this._pushLog('dsh-window', `启动命令: ${JSON.stringify(args)} (${spec.label})`)
 
     const env = { ...process.env, ...(spec.extraEnv || {}) }
     let child
@@ -482,7 +482,7 @@ class DshManager extends EventEmitter {
       this._readyTimer = setTimeout(() => {
         if (this.ready || !this.child) return
         this.timedOut = true
-        this._pushLog('dsh-desktop', `等待就绪超过 ${this.timeoutMs}ms,强制停止。`)
+        this._pushLog('dsh-window', `等待就绪超过 ${this.timeoutMs}ms,强制停止。`)
         this._forceKill(child)
         const tail = this.logs.slice(-12).join('\n')
         this._setPhase('error', `等待 dsh 就绪超时(${Math.round(this.timeoutMs / 1000)}s)`)

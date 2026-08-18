@@ -177,7 +177,7 @@ test('找不到任何 dsh → 抛出带排查建议的错误', async () => {
   await manager.start()
   const [info] = await errP
   assert.ok(info.message.includes('找不到可用的 dsh'), info.message)
-  assert.ok(info.message.includes('DSH_DESKTOP_DSH'), '包含解决办法提示')
+  assert.ok(info.message.includes('DSH_WINDOW_DSH'), '包含解决办法提示')
 })
 
 test('restart:先停旧进程再拉起新进程', async () => {
