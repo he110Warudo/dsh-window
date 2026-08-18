@@ -287,3 +287,27 @@ test('quoteCmdArg:简单参数原样返回,含空格加引号,含引号抛错', 
   assert.strictEqual(quoteCmdArg('hello world'), '"hello world"')
   assert.throws(() => quoteCmdArg('a"b'))
 })
+
+// ---------------------------------------------------------------- guard 看门狗
+
+test('guard:dsh 先消失时正常退出(父进程存活)', async () => {
+  const { spawn } = require('node:child_process')
+  const guardPath = path.join(__dirname, '..', 'electron', 'guard.js')
+  let child
+  try {
+    child = spawn(process.execPath, [guardPath, String(process.pid), '987654321'], {
+      stdio: ['ignore', 'ignore', 'pipe'],
+      windowsHide: true
+    })
+  } catch (error) {
+    // 环境禁止 spawn 时跳过(受限沙箱)
+    assert.ok(String(error.message).includes('EPERM'), error.message)
+    return
+  }
+  const code = await new Promise((resolve) => {
+    child.on('exit', resolve)
+    setTimeout(() => resolve('timeout'), 5000)
+  })
+  assert.strictEqual(code, 0, 'dsh 已死,guard 应自行退出')
+  if (code === 'timeout') child.kill('SIGKILL')
+})

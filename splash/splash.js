@@ -3,6 +3,7 @@
 /**
  * splash — 状态页逻辑:根据主进程推送的 phase 切换视图。
  * 该页面同时承担"启动页"与"崩溃/错误页"两个角色。
+ * 视觉与 DSH Web GUI 对齐(亮/暗跟随系统)。
  */
 
 const $ = (id) => document.getElementById(id)
@@ -11,9 +12,11 @@ const viewLoading = $('view-loading')
 const viewError = $('view-error')
 const statusLine = $('status-line')
 const hintLine = $('hint-line')
+const errorTitle = $('error-title')
 const errorMessage = $('error-message')
 const errorLog = $('error-log')
 const footLog = $('foot-log')
+const versionEl = $('version')
 
 const PHASE_TEXT = {
   idle: '空闲',
@@ -37,17 +40,18 @@ const HINT_TEXT = {
 }
 
 let logs = []
-let terminal = false
+let lastPhase = 'resolving'
+let lastMessage = ''
 
 function render() {
   const text = PHASE_TEXT[lastPhase] || lastPhase
   if (lastPhase === 'error' || lastPhase === 'crashed') {
     viewLoading.hidden = true
     viewError.hidden = false
-    if (lastMessage) errorMessage.textContent = lastMessage
+    errorTitle.textContent = lastPhase === 'error' ? 'dsh 启动失败' : 'dsh 进程已退出'
+    errorMessage.textContent = lastMessage || ''
     errorLog.textContent = logs.slice(-40).join('\n')
-    if (lastPhase === 'error') $('btn-retry').textContent = '重试'
-    else $('btn-retry').textContent = '重启 dsh'
+    $('btn-retry').textContent = lastPhase === 'error' ? '重试' : '重启 dsh'
   } else {
     viewLoading.hidden = false
     viewError.hidden = true
@@ -61,9 +65,6 @@ function render() {
   footLog.textContent = logs.slice(-60).join('\n')
 }
 
-let lastPhase = 'resolving'
-let lastMessage = ''
-
 function applyStatus(payload) {
   if (payload.kind === 'log') {
     logs.push(payload.line)
@@ -74,12 +75,6 @@ function applyStatus(payload) {
   if (payload.kind === 'state') {
     lastPhase = payload.phase
     if (payload.message) lastMessage = payload.message
-    if (payload.phase === 'error' || payload.phase === 'crashed') {
-      if (payload.message) lastMessage = payload.message
-      terminal = true
-    } else {
-      terminal = false
-    }
     render()
   }
 }
@@ -89,12 +84,11 @@ async function init() {
   logs = state.logs || []
   lastPhase = state.phase || 'resolving'
   if (state.message) lastMessage = state.message
-  if (lastPhase === 'error' || lastPhase === 'crashed') terminal = true
+  if (state.version) versionEl.textContent = `v${state.version}`
   render()
   window.dshDesktop.onStatus(applyStatus)
 
   $('btn-retry').addEventListener('click', () => {
-    terminal = false
     logs = []
     lastPhase = 'starting'
     render()

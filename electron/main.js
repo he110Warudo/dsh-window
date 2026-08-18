@@ -8,10 +8,16 @@
  *   2. 显示 splash(启动/状态/错误页),同步拉起 dsh web
  *   3. 解析到 URL 后打开主窗口并导航到 DSH Web GUI
  *   4. dsh 崩溃 → 主窗口切回状态页,可一键重启
- *   5. 退出时停止 dsh(Windows 下清理整个进程树)
+ *   5. 退出时停止 dsh(Windows 下清理整个进程树);另有 guard 看门狗
+ *      兜底任务管理器强杀等 before-quit 无法执行的情况
+ *
+ * 窗口外观:隐藏系统标题栏(titleBarStyle:'hidden'),原生窗口按钮
+ * (最小化/最大化/关闭)以 overlay 形式浮在 DSH GUI 右上角,颜色跟随
+ * DSH 主题(亮/暗);页面顶部注入一条透明拖拽区用于移动窗口。
  */
 
-const { app, BrowserWindow, ipcMain, clipboard, shell, Menu, dialog } = require('electron')
+const { app, BrowserWindow, ipcMain, clipboard, shell, Menu, dialog, nativeTheme } = require('electron')
+const { spawn } = require('node:child_process')
 const path = require('node:path')
 const fs = require('node:fs')
 const { pathToFileURL } = require('node:url')
@@ -19,6 +25,19 @@ const { DshManager } = require('./dsh-manager')
 
 const APP_ID = 'ai.deepseek.dshdesktop'
 const SPLASH_HTML = path.join(__dirname, '..', 'splash', 'index.html')
+const GUARD_JS = path.join(__dirname, 'guard.js')
+
+// DSH 设计系统 token(取自 @deepseek-ai/dsh-client-ui-theme design-platform.css)
+const CHROME_LIGHT = { color: '#ffffff', symbolColor: '#0f1115', backgroundColor: '#ffffff' }
+const CHROME_DARK = { color: '#151517', symbolColor: '#f9fafb', backgroundColor: '#151517' }
+
+/** 拖拽区:覆盖内容区顶部(避开左侧栏),右端止于窗口按钮 overlay。 */
+const DRAG_STRIP = {
+  top: 0,
+  height: 32,
+  left: 236,
+  right: 'env(titlebar-area-width, 138px)'
+}
 
 const DEFAULTS = {
   dshCommand: null,
@@ -104,10 +123,44 @@ let quitting = false
 let appWindowUrl = null
 let everReady = false
 let lastFailureMessage = ''
+let guard = null
+
+// ---------------------------------------------------------------- guard(看门狗)
+
+function startGuard(dshPid) {
+  stopGuard()
+  if (!Number.isInteger(dshPid) || dshPid <= 0) return
+  try {
+    guard = spawn(process.execPath, [GUARD_JS, String(process.pid), String(dshPid)], {
+      windowsHide: true,
+      stdio: 'ignore',
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
+    })
+    logLine(`[guard] 已启动,监视 dsh pid=${dshPid}`)
+  } catch (error) {
+    logLine(`[guard] 启动失败: ${error.message}`)
+  }
+}
+
+function stopGuard() {
+  if (guard && !guard.killed) {
+    try {
+      guard.kill()
+    } catch {
+      /* ignore */
+    }
+  }
+  guard = null
+}
 
 // ---------------------------------------------------------------- windows
 
+function chromeOptions() {
+  return nativeTheme.shouldUseDarkColors ? CHROME_DARK : CHROME_LIGHT
+}
+
 function createSplashWindow() {
+  const chrome = chromeOptions()
   splashWin = new BrowserWindow({
     width: 560,
     height: 430,
@@ -115,7 +168,9 @@ function createSplashWindow() {
     show: false,
     title: 'DSH Desktop',
     autoHideMenuBar: true,
-    backgroundColor: '#0f1420',
+    backgroundColor: chrome.backgroundColor,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: chrome.color, symbolColor: chrome.symbolColor, height: 36 },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -132,6 +187,7 @@ function createSplashWindow() {
 
 function createAppWindow(url) {
   const bounds = settings.windowBounds
+  const chrome = chromeOptions()
   appWin = new BrowserWindow({
     width: bounds && Number.isFinite(bounds.width) ? bounds.width : 1400,
     height: bounds && Number.isFinite(bounds.height) ? bounds.height : 900,
@@ -141,7 +197,9 @@ function createAppWindow(url) {
     minHeight: 600,
     show: false,
     title: 'DSH Desktop',
-    backgroundColor: '#0f1420',
+    backgroundColor: chrome.backgroundColor,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: chrome.color, symbolColor: chrome.symbolColor, height: 36 },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -194,6 +252,61 @@ function createAppWindow(url) {
   appWin.loadURL(url)
 }
 
+/** DSH 页面加载完成后:同步窗口按钮主题 + 注入拖拽条 + 记录布局校准数据。 */
+function prepareDshPage(win) {
+  const wc = win.webContents
+  wc.on('did-finish-load', () => {
+    if (!wc.getURL().startsWith('http')) return
+
+    // 1) 窗口按钮颜色跟随页面实际主题(亮/暗)
+    wc
+      .executeJavaScript(`document.body.hasAttribute('data-ds-dark-theme')`)
+      .then((dark) => {
+        if (win.isDestroyed()) return
+        const overlay = dark ? CHROME_DARK : CHROME_LIGHT
+        win.setTitleBarOverlay({ color: overlay.color, symbolColor: overlay.symbolColor, height: 36 })
+        win.setBackgroundColor(overlay.backgroundColor)
+      })
+      .catch(() => {})
+
+    // 2) 顶部拖拽条(真实元素,保证 app-region 命中)
+    const right = DRAG_STRIP.right
+    wc
+      .executeJavaScript(`(() => {
+        document.getElementById('dsh-desktop-drag-strip')?.remove();
+        const el = document.createElement('div');
+        el.id = 'dsh-desktop-drag-strip';
+        el.style.cssText = 'position:fixed;top:${DRAG_STRIP.top}px;left:${DRAG_STRIP.left}px;right:calc(${right});height:${DRAG_STRIP.height}px;-webkit-app-region:drag;z-index:2147483000;';
+        document.body.appendChild(el);
+        return true;
+      })()`)
+      .catch(() => {})
+
+    // 3) 布局校准数据(写入日志,便于后续调整拖拽条/按钮位置)
+    setTimeout(() => {
+      wc
+        .executeJavaScript(`(() => {
+          const out = [];
+          for (const el of document.querySelectorAll('body *')) {
+            const r = el.getBoundingClientRect();
+            if (r.top < 44 && r.height > 2 && r.width > 6 && r.bottom > 0) {
+              const hit = el.closest('button,a,[role=button],input,textarea,select,label,[contenteditable]');
+              out.push({ x: Math.round(r.x), w: Math.round(r.width), click: !!hit });
+            }
+          }
+          const leftCols = [];
+          for (const el of document.querySelectorAll('body *')) {
+            const r = el.getBoundingClientRect();
+            if (r.top <= 0 && r.bottom >= window.innerHeight && r.width > 40 && r.width < window.innerWidth) leftCols.push(Math.round(r.width));
+          }
+          return JSON.stringify({ clickables: out.slice(0, 12), leftColWidths: leftCols.slice(0, 4), vw: window.innerWidth });
+        })()`)
+        .then((json) => logLine(`[layout] ${json}`))
+        .catch(() => {})
+    }, 2500)
+  })
+}
+
 /** 让某个窗口显示状态页(splash 与主窗口共用同一份 UI)。 */
 function showStatusPage(win) {
   if (!win) return
@@ -230,7 +343,11 @@ function startManager() {
       appWin.loadURL(url).catch(() => {})
     } else {
       createAppWindow(url)
+      prepareDshPage(appWin)
     }
+    // 看门狗:主进程被强杀时兜底清理 dsh 进程树
+    if (manager.child && manager.child.pid) startGuard(manager.child.pid)
+
     if (process.env.DSH_DESKTOP_SMOKE) {
       console.log(`DSH_DESKTOP_SMOKE_READY ${url}`)
       if (appWin) {
@@ -238,7 +355,7 @@ function startManager() {
           console.log(`DSH_DESKTOP_SMOKE_PAGE_LOADED ${appWin.webContents.getURL()}`)
         })
       }
-      setTimeout(() => app.quit(), 4000)
+      setTimeout(() => app.quit(), 9000)
     }
     if (splashWin) {
       splashWin.close()
@@ -282,7 +399,8 @@ function wireIpc() {
     phase: manager ? manager.phase : 'idle',
     url: manager ? manager.url : null,
     logs: manager ? manager.getLogs() : [],
-    message: lastFailureMessage
+    message: lastFailureMessage,
+    version: app.getVersion()
   }))
   ipcMain.on('dsh:restart', () => requestDshRestart())
   ipcMain.on('dsh:quit', () => app.quit())
@@ -420,6 +538,7 @@ if (!gotLock) {
     if (quitting) return
     event.preventDefault()
     quitting = true
+    stopGuard()
     logLine('应用退出,正在停止 dsh…')
     if (manager) {
       const timeout = new Promise((resolve) => setTimeout(resolve, 5000))
@@ -427,5 +546,9 @@ if (!gotLock) {
     }
     logLine('dsh 已停止,退出。')
     app.quit()
+  })
+
+  app.on('will-quit', () => {
+    stopGuard()
   })
 }

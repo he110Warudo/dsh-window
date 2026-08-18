@@ -1,14 +1,53 @@
+/* dsh-desktop 启动页 —— 视觉与 DeepSeek Harness Web GUI 对齐。
+ * 设计 token 取自 @deepseek-ai/dsh-client-ui-theme/design-platform.css:
+ * 亮暗主题跟随系统 prefers-color-scheme(与 DSH 默认 "跟随系统" 行为一致)。 */
+
 :root {
-  color-scheme: dark;
-  --bg: #0f1420;
-  --panel: #171e2e;
-  --panel-2: #1e2740;
-  --text: #e6ebf5;
-  --muted: #8b96ad;
-  --accent: #4f8cff;
-  --accent-2: #7aa8ff;
-  --error: #ff6b6b;
-  --border: #2a3450;
+  color-scheme: light dark;
+
+  --ds-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --ds-font-family-code: 'SF Mono', 'JetBrains Mono', 'Fira Code', Consolas,
+    'Liberation Mono', Menlo, Courier, 'PingFang SC', 'Microsoft YaHei';
+  --ds-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --ds-duration: 0.2s;
+
+  /* 亮色(与 DSH 亮色别名一致) */
+  --dsw-bg-base: #ffffff;
+  --dsw-bg-layer-1: #ffffff;
+  --dsw-label-primary: #0f1115;
+  --dsw-label-secondary: #61666b;
+  --dsw-label-tertiary: #81858c;
+  --dsw-label-caption: #adb2b8;
+  --dsw-border-l1: rgba(0, 0, 0, 0.04);
+  --dsw-border-l2: rgba(0, 0, 0, 0.1);
+  --dsw-interactive-hover: rgba(38, 49, 72, 0.06);
+  --dsw-interactive-active: rgba(38, 49, 72, 0.1);
+  --dsw-brand-primary: #0f1115;
+  --dsw-brand-on-primary: #ffffff;
+  --dsw-accent: #4176e6;
+  --dsw-accent-hover: #5686fe;
+  --dsw-error: #ec1313;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --dsw-bg-base: #151517;
+    --dsw-bg-layer-1: #232324;
+    --dsw-label-primary: #f9fafb;
+    --dsw-label-secondary: #cfd3d6;
+    --dsw-label-tertiary: #adb2b8;
+    --dsw-label-caption: #81858c;
+    --dsw-border-l1: rgba(255, 255, 255, 0.06);
+    --dsw-border-l2: rgba(255, 255, 255, 0.12);
+    --dsw-interactive-hover: rgba(255, 255, 255, 0.08);
+    --dsw-interactive-active: rgba(255, 255, 255, 0.14);
+    --dsw-brand-primary: #f9fafb;
+    --dsw-brand-on-primary: #151517;
+    --dsw-accent: #679efe;
+    --dsw-accent-hover: #86aeff;
+    --dsw-error: #f25a5a;
+  }
 }
 
 * {
@@ -22,76 +61,64 @@ body {
 }
 
 body {
-  background: radial-gradient(1200px 600px at 50% -10%, #1b2540 0%, var(--bg) 55%);
-  color: var(--text);
-  font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  user-select: none;
-}
-
-.card {
-  width: min(92vw, 640px);
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 26px 28px 18px;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
-}
-
-.brand {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--border);
-}
-
-.mark {
-  color: var(--accent);
-  font-size: 22px;
-}
-
-.name {
-  font-size: 17px;
-  font-weight: 600;
-  letter-spacing: 0.4px;
-}
-
-.name em {
-  font-style: normal;
-  color: var(--accent-2);
-  font-weight: 400;
-}
-
-.version {
-  margin-left: auto;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.view {
-  min-height: 170px;
+  background: var(--dsw-bg-base);
+  color: var(--dsw-label-primary);
+  font-family: var(--ds-font-family);
+  font-size: 14px;
+  line-height: 22px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 26px 4px 10px;
+  overflow: hidden;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+/* 可交互元素恢复为不可拖拽 */
+button,
+a,
+details,
+summary,
+pre {
+  -webkit-app-region: no-drag;
+}
+
+/* ---------------- 启动视图(对齐 DSH boot 页:居中列,间距 16px) ---------------- */
+
+.view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
 }
 
 .view[hidden] {
   display: none;
 }
 
+.wordmark {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--dsw-label-primary);
+}
+
+.wordmark .sub {
+  color: var(--dsw-label-tertiary);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
 .spinner {
-  width: 34px;
-  height: 34px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  border: 3px solid var(--border);
-  border-top-color: var(--accent);
-  animation: spin 0.9s linear infinite;
+  border: 2px solid var(--dsw-border-l2);
+  border-top-color: var(--dsw-brand-primary);
+  animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {
@@ -101,143 +128,183 @@ body {
 }
 
 .status {
-  margin: 6px 0 0;
-  font-size: 15px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
   font-weight: 600;
+  color: var(--dsw-label-primary);
 }
 
 .hint {
   margin: 0;
-  color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-label-tertiary);
   text-align: center;
+  max-width: 420px;
 }
 
-.error-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: rgba(255, 107, 107, 0.15);
-  border: 1px solid var(--error);
-  color: var(--error);
-  font-weight: 700;
-  font-size: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* ---------------- 错误视图(对齐 DSH failed 状态:列,间距 8px,标题 14/600) ---------------- */
+
+#view-error {
+  gap: 8px;
+  max-width: 480px;
+  width: min(88vw, 480px);
 }
 
 .error-title {
-  margin: 2px 0 0;
-  font-size: 15px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
   font-weight: 600;
-  color: var(--error);
+  color: var(--dsw-error);
 }
 
 .error-message {
   margin: 0;
-  color: var(--muted);
   font-size: 13px;
-  text-align: center;
+  line-height: 20px;
+  color: var(--dsw-label-secondary);
   white-space: pre-wrap;
-  max-width: 100%;
-  max-height: 90px;
+  max-height: 96px;
   overflow: auto;
+  user-select: text;
+  width: 100%;
 }
 
 .log {
   width: 100%;
-  max-height: 110px;
+  max-height: 150px;
   overflow: auto;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  margin: 4px 0 0;
   padding: 10px 12px;
-  font-family: Consolas, "Courier New", monospace;
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: #b9c4d9;
-  user-select: text;
+  background: var(--dsw-bg-layer-1);
+  border: 1px solid var(--dsw-border-l2);
+  border-radius: 12px;
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-label-secondary);
   white-space: pre-wrap;
   word-break: break-all;
+  user-select: text;
 }
 
 .actions {
   display: flex;
-  gap: 10px;
-  margin-top: 4px;
+  gap: 8px;
+  margin-top: 8px;
 }
 
+/* ---------------- 按钮(DSH button 样式:圆角 10px,主按钮 = 反色填充) ---------------- */
+
 button {
-  font: inherit;
-  font-size: 13px;
-  padding: 7px 22px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--panel-2);
-  color: var(--text);
+  font-family: var(--ds-font-family);
+  font-size: 14px;
+  line-height: 22px;
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--dsw-label-primary);
   cursor: pointer;
+  transition:
+    background var(--ds-duration) var(--ds-ease),
+    border-color var(--ds-duration) var(--ds-ease),
+    color var(--ds-duration) var(--ds-ease);
 }
 
 button:hover {
-  border-color: var(--accent);
+  background: var(--dsw-interactive-hover);
+}
+
+button:active {
+  background: var(--dsw-interactive-active);
 }
 
 button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  background: var(--dsw-brand-primary);
+  color: var(--dsw-brand-on-primary);
 }
 
 button.primary:hover {
-  background: var(--accent-2);
+  background: var(--dsw-brand-primary);
+  opacity: 0.88;
 }
+
+button.secondary {
+  border-color: var(--dsw-border-l2);
+}
+
+button.secondary:hover {
+  background: var(--dsw-interactive-hover);
+}
+
+/* ---------------- 链接 ---------------- */
 
 .links {
   display: flex;
   gap: 16px;
-  margin-top: 10px;
+  margin-top: 6px;
 }
 
 .links a {
-  color: var(--muted);
   font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-label-tertiary);
   text-decoration: none;
 }
 
 .links a:hover {
-  color: var(--accent-2);
+  color: var(--dsw-accent);
 }
+
+/* ---------------- 底部日志入口(默认折叠,低调) ---------------- */
 
 .foot {
-  border-top: 1px solid var(--border);
-  padding-top: 10px;
-  margin-top: 8px;
-  color: var(--muted);
-  font-size: 12px;
+  position: fixed;
+  bottom: 10px;
+  right: 14px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-label-caption);
 }
 
-.logbox summary {
+.foot details {
+  position: relative;
+}
+
+.foot summary {
   cursor: pointer;
-  color: var(--muted);
+  list-style: none;
+  transition: color var(--ds-duration) var(--ds-ease);
 }
 
-.logbox summary:hover {
-  color: var(--accent-2);
+.foot summary:hover {
+  color: var(--dsw-label-tertiary);
 }
 
-.logbox pre {
-  max-height: 140px;
+.foot pre {
+  position: absolute;
+  bottom: 24px;
+  right: 0;
+  width: min(70vw, 520px);
+  max-height: 180px;
   overflow: auto;
-  font-family: Consolas, "Courier New", monospace;
-  font-size: 11px;
-  color: #9aa7bf;
-  user-select: text;
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--dsw-bg-layer-1);
+  border: 1px solid var(--dsw-border-l2);
+  border-radius: 12px;
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-label-secondary);
   white-space: pre-wrap;
   word-break: break-all;
-  margin: 8px 0 0;
+  user-select: text;
 }

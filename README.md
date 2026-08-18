@@ -8,6 +8,8 @@ DeepSeek Harness 桌面 GUI 客户端。**双击启动,自动拉起 `dsh web`,�
 - dsh 命令自动解析:环境变量 → PATH → npm `_npx` 缓存 → 内置依赖 → `npx` 兜底,找不到时给出排查建议
 - 崩溃自愈:dsh 意外退出后窗口自动切回状态页,可一键重启(会话数据保存在 `$DSH_HOME`,不丢失)
 - 单实例:重复启动只会聚焦已有窗口(避免两个 dsh 同时写 profile)
+- 界面与 DSH Web GUI 一致:启动页/状态页使用同一套设计 token(亮/暗跟随系统);系统标题栏隐藏,窗口按钮浮于界面右上角且颜色跟随 DSH 主题;内容区顶部注入透明拖拽条用于移动窗口
+- 看门狗:主进程被任务管理器等强杀时,guard 进程自动清理 dsh 进程树,不留孤儿
 - 完整日志:启动日志实时展示,可复制、可打开日志文件(`%APPDATA%/dsh-desktop/dsh-desktop.log`)
 
 ## 快速开始(开发模式)
@@ -58,10 +60,11 @@ node test/smoke-launch.js --stdio # 受限环境下的冒烟模式(stdio 继承 
 
 ```
 electron/
-  main.js          主进程:窗口、生命周期、IPC、菜单、设置
+  main.js          主进程:窗口、生命周期、IPC、菜单、设置、标题栏融合
   preload.js       状态页桥接(contextIsolation + sandbox)
   dsh-manager.js   dsh 子进程管理(纯 Node,可独立测试)
-splash/            启动/状态/错误页(静态页面,主窗口与启动窗口共用)
+  guard.js         dsh 看门狗(主进程被强杀时兜底清理进程树)
+splash/            启动/状态/错误页(与 DSH Web GUI 同款视觉,主窗口与启动窗口共用)
 test/              单元测试与冒烟脚本
 ```
 
@@ -69,7 +72,8 @@ test/              单元测试与冒烟脚本
 
 - **找不到 dsh**:确认 `npm install` 已执行(内置兜底依赖);或在设置里把 `dshCommand` 指向 `dsh` 的 `lib/bin.js`;或全局安装 `npm i -g @deepseek-ai/dsh`。
 - **dsh 起来了但界面打不开**:查看状态页日志;`--trusted-host` 仅在非本机访问时需要,本客户端始终走 `127.0.0.1`。
-- **退出应用后 dsh 还在跑**:Windows 下用 `taskkill /T /F` 清理进程树;若被第三方方式强杀客户端进程,可用 `taskkill /IM node.exe /F`(注意会杀掉所有 node 进程)或任务管理器结束。
+- **退出应用后 dsh 还在跑**:正常退出会自动清理进程树;即使客户端进程被任务管理器强杀,内置看门狗也会在数秒内清理 dsh。若仍残留(如看门狗也被杀),可用 `taskkill /IM node.exe /F`(注意会杀掉所有 node 进程)。
+- **窗口顶部拖拽区**:内容区顶部约 32px 的透明条带是拖拽区(用于移动窗口);侧边栏与窗口按钮区域不受影响。布局校准数据会写入日志(`[layout]` 行),便于后续调整。
 - **端口**:本客户端始终使用随机空闲端口,不会与 `dsh web` 命令行实例或其他实例冲突。
 
 ## 路线图
