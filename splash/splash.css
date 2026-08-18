@@ -1,9 +1,11 @@
 /* dsh-window 启动页 —— 视觉与 DeepSeek Harness Web GUI 对齐。
  * 设计 token 取自 @deepseek-ai/dsh-client-ui-theme/design-platform.css:
- * 亮暗主题跟随系统 prefers-color-scheme(与 DSH 默认 "跟随系统" 行为一致)。 */
+ * 亮/暗主题与客户端当前主题对齐 —— 与 DSH 页面同一套约定,
+ * 由 html 上的 data-ds-dark-theme 属性驱动(splash.js 依据主进程解析的
+ * ui-theme.preference 设置该属性;偏好为 system 时解析为系统配色)。 */
 
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 
   --ds-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
@@ -30,24 +32,24 @@
   --dsw-error: #ec1313;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --dsw-bg-base: #151517;
-    --dsw-bg-layer-1: #232324;
-    --dsw-label-primary: #f9fafb;
-    --dsw-label-secondary: #cfd3d6;
-    --dsw-label-tertiary: #adb2b8;
-    --dsw-label-caption: #81858c;
-    --dsw-border-l1: rgba(255, 255, 255, 0.06);
-    --dsw-border-l2: rgba(255, 255, 255, 0.12);
-    --dsw-interactive-hover: rgba(255, 255, 255, 0.08);
-    --dsw-interactive-active: rgba(255, 255, 255, 0.14);
-    --dsw-brand-primary: #f9fafb;
-    --dsw-brand-on-primary: #151517;
-    --dsw-accent: #679efe;
-    --dsw-accent-hover: #86aeff;
-    --dsw-error: #f25a5a;
-  }
+/* 暗色:与 DSH 页面一致,属性驱动而非媒体查询(属性由 splash.js 设置) */
+:root[data-ds-dark-theme] {
+  color-scheme: dark;
+  --dsw-bg-base: #151517;
+  --dsw-bg-layer-1: #232324;
+  --dsw-label-primary: #f9fafb;
+  --dsw-label-secondary: #cfd3d6;
+  --dsw-label-tertiary: #adb2b8;
+  --dsw-label-caption: #81858c;
+  --dsw-border-l1: rgba(255, 255, 255, 0.06);
+  --dsw-border-l2: rgba(255, 255, 255, 0.12);
+  --dsw-interactive-hover: rgba(255, 255, 255, 0.08);
+  --dsw-interactive-active: rgba(255, 255, 255, 0.14);
+  --dsw-brand-primary: #f9fafb;
+  --dsw-brand-on-primary: #151517;
+  --dsw-accent: #679efe;
+  --dsw-accent-hover: #86aeff;
+  --dsw-error: #f25a5a;
 }
 
 * {

@@ -3,8 +3,17 @@
 /**
  * splash — 状态页逻辑:根据主进程推送的 phase 切换视图。
  * 该页面同时承担"启动页"与"崩溃/错误页"两个角色。
- * 视觉与 DSH Web GUI 对齐(亮/暗跟随系统)。
+ * 颜色主题与客户端当前主题对齐(见 applyTheme)。
  */
+
+/** 应用主题,与 DSH 客户端同一套约定:html 上的 data-ds-dark-theme 属性 + color-scheme。 */
+function applyTheme(dark) {
+  document.documentElement.toggleAttribute('data-ds-dark-theme', Boolean(dark))
+}
+
+// 主进程在 loadFile 时写入主题查询参数,脚本在首帧前同步应用,避免闪色
+const themeQuery = new URLSearchParams(location.search).get('theme')
+if (themeQuery === 'dark' || themeQuery === 'light') applyTheme(themeQuery === 'dark')
 
 const $ = (id) => document.getElementById(id)
 
@@ -81,12 +90,14 @@ function applyStatus(payload) {
 
 async function init() {
   const state = await window.dshWindow.getState()
+  if (typeof state.theme === 'boolean') applyTheme(state.theme)
   logs = state.logs || []
   lastPhase = state.phase || 'resolving'
   if (state.message) lastMessage = state.message
   if (state.version) versionEl.textContent = `v${state.version}`
   render()
   window.dshWindow.onStatus(applyStatus)
+  window.dshWindow.onTheme(applyTheme)
 
   $('btn-retry').addEventListener('click', () => {
     logs = []

@@ -12,15 +12,16 @@
  *   6. 退出时停止 dsh(Windows 下清理整个进程树);另有 guard 看门狗
  *      兜底任务管理器强杀等 before-quit 无法执行的情况
  *
- * 窗口外观:隐藏系统标题栏(titleBarStyle:'hidden'),原生窗口按钮
- * (最小化/最大化/关闭)以 overlay 形式浮在 DSH GUI 右上角,颜色跟随
- * DSH 主题(亮/暗);页面顶部注入一条透明拖拽区用于移动窗口。
+ * 窗口外观:隐藏系统标题栏(titleBarStyle:'hidden');主窗口的
+ * 最小化/最大化/关闭按钮为注入的自绘按钮,颜色与悬停高亮复用
+ * DSH 设计 token,与界面其他组件一致;页面顶部注入透明拖拽区用于移动窗口。
  */
 
 const { app, BrowserWindow, ipcMain, clipboard, shell, Menu, dialog, nativeTheme, Tray, nativeImage } = require('electron')
 const { spawn } = require('node:child_process')
 const path = require('node:path')
 const fs = require('node:fs')
+const os = require('node:os')
 const { pathToFileURL } = require('node:url')
 const { DshManager } = require('./dsh-manager')
 
@@ -31,15 +32,17 @@ const TRAY_ICON = path.join(__dirname, '..', 'assets', 'tray.ico')
 const APP_ICON = path.join(__dirname, '..', 'assets', 'icon.png')
 
 // DSH 设计系统 token(取自 @deepseek-ai/dsh-client-ui-theme design-platform.css)
-const CHROME_LIGHT = { color: '#ffffff', symbolColor: '#0f1115', backgroundColor: '#ffffff' }
-const CHROME_DARK = { color: '#151517', symbolColor: '#f9fafb', backgroundColor: '#151517' }
+// color 为全透明:标题栏区域不再绘制实色,按钮直接浮在页面内容之上,
+// 页面自身的毛玻璃/遮罩效果(如设置界面)可透到按钮背后。
+const CHROME_LIGHT = { color: '#ffffff00', symbolColor: '#0f1115', backgroundColor: '#ffffff' }
+const CHROME_DARK = { color: '#15151700', symbolColor: '#f9fafb', backgroundColor: '#151517' }
 
-/** 拖拽区:覆盖内容区顶部(避开左侧栏),右端止于窗口按钮 overlay。 */
+/** 拖拽区:覆盖内容区顶部(避开左侧栏),右端止于自定义窗口按钮。 */
 const DRAG_STRIP = {
   top: 0,
   height: 32,
   left: 236,
-  right: 'env(titlebar-area-width, 138px)'
+  right: '138px' // 三个 46px 自定义按钮的总宽
 }
 
 const DEFAULTS = {
@@ -130,6 +133,7 @@ let lastFailureMessage = ''
 let guard = null
 let tray = null
 let hiddenToTray = false
+let deferredShowPending = false
 
 // ---------------------------------------------------------------- guard(看门狗)
 
@@ -199,10 +203,109 @@ function createTray() {
   tray.on('double-click', () => showWindow())
 }
 
+// ---------------------------------------------------------------- theme(与客户端主题对齐)
+
+/** DSH 主题偏好持久化文件:与 dsh 一致,位于 $DSH_HOME 或 ~/.dsh 下的 settings.yaml。 */
+function dshSettingsPath() {
+  const env = process.env.DSH_HOME && process.env.DSH_HOME.trim() ? process.env.DSH_HOME : null
+  return path.join(env || path.join(os.homedir(), '.dsh'), 'settings.yaml')
+}
+
+/**
+ * 读取 DSH 的 ui-theme.preference(light/dark/system),规则与
+ * @deepseek-ai/dsh-client-ui-theme 一致:文件缺失或无法解析时按默认值 system。
+ */
+function readThemePreference() {
+  let text = ''
+  try {
+    text = fs.readFileSync(dshSettingsPath(), 'utf8')
+  } catch {
+    return 'system'
+  }
+  // 定位 ui-theme 段:兼容块状(下一行缩进的 preference)与行内 flow 两种写法
+  const section = text.match(/(?:^|\n)[ \t]*["']?ui-theme["']?\s*:\s*([^\n]*)(?:\n((?:[ \t]+.*\n?)*))?/)
+  const haystack = `${section ? section[1] : ''}\n${section ? section[2] : ''}`
+  const m = haystack.match(/["']?preference["']?\s*:\s*["']?(light|dark|system)["']?/)
+  return m ? m[1] : 'system'
+}
+
+let currentDark = false
+
+/** 与 DSH 客户端相同的解析规则:dark = 偏好 dark,或偏好 system 且系统为暗色。 */
+function resolveThemeDark() {
+  const preference = readThemePreference()
+  if (preference === 'light') return false
+  if (preference === 'dark') return true
+  return nativeTheme.shouldUseDarkColors
+}
+
+/** 窗口当前是否正在显示状态页(splash 与主窗口共用同一份 UI)。 */
+function isStatusWindow(win) {
+  if (!win || win.isDestroyed()) return false
+  try {
+    return win.webContents.getURL().split('?')[0] === pathToFileURL(SPLASH_HTML).href
+  } catch {
+    return false
+  }
+}
+
+/** 主题变化时推送给状态页,并同步其窗口背景/标题栏。 */
+function pushTheme() {
+  const dark = resolveThemeDark()
+  if (dark === currentDark) return
+  currentDark = dark
+  logLine(`[theme] 状态页主题: ${dark ? 'dark' : 'light'}`)
+  for (const win of [splashWin, appWin]) {
+    if (!isStatusWindow(win)) continue
+    win.webContents.send('dsh:theme', dark)
+    applyChrome(win, dark)
+  }
+}
+
+/**
+ * 启动主题跟随:初始解析 + 监听变化。
+ *  - nativeTheme 'updated':偏好为 system 时随系统亮暗切换(与 DSH 一致);
+ *  - 监听设置文件所在目录:DSH 以「临时文件 + 原子改名」写入,文件监听在
+ *    Windows 上会因 rename 失联,目录监听始终可靠;
+ *  - 目录尚不存在时向上找最近存在的祖先,首次创建即触发重读。
+ */
+function watchTheme() {
+  currentDark = resolveThemeDark()
+  nativeTheme.on('updated', pushTheme)
+  let dir = path.dirname(dshSettingsPath())
+  while (true) {
+    try {
+      if (fs.statSync(dir).isDirectory()) break
+    } catch {
+      /* 目录不存在,向上找 */
+    }
+    const parent = path.dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+  try {
+    const watcher = fs.watch(dir, () => pushTheme())
+    watcher.on('error', () => {})
+    watcher.unref && watcher.unref()
+  } catch {
+    logLine('[theme] 设置文件监听不可用,主题仅启动时解析')
+  }
+}
+
 // ---------------------------------------------------------------- windows
 
 function chromeOptions() {
-  return nativeTheme.shouldUseDarkColors ? CHROME_DARK : CHROME_LIGHT
+  return resolveThemeDark() ? CHROME_DARK : CHROME_LIGHT
+}
+
+/** 把窗口背景色切到指定亮/暗主题(自定义按钮颜色由页面 CSS 变量自动跟随)。 */
+function applyChrome(win, dark) {
+  const overlay = dark ? CHROME_DARK : CHROME_LIGHT
+  try {
+    win.setBackgroundColor(overlay.backgroundColor)
+  } catch {
+    /* 窗口已销毁时忽略 */
+  }
 }
 
 function createSplashWindow() {
@@ -225,7 +328,7 @@ function createSplashWindow() {
       sandbox: true
     }
   })
-  splashWin.loadFile(SPLASH_HTML)
+  splashWin.loadFile(SPLASH_HTML, { query: { theme: resolveThemeDark() ? 'dark' : 'light' } })
   splashWin.once('ready-to-show', () => splashWin && splashWin.show())
   splashWin.on('closed', () => {
     splashWin = null
@@ -238,7 +341,9 @@ function createSplashWindow() {
   })
 }
 
-function createAppWindow(url) {
+function createAppWindow(url, opts = {}) {
+  const deferShow = !!opts.deferShow
+  if (deferShow) deferredShowPending = true
   const bounds = settings.windowBounds
   const chrome = chromeOptions()
   appWin = new BrowserWindow({
@@ -253,7 +358,6 @@ function createAppWindow(url) {
     title: 'DSH Window',
     backgroundColor: chrome.backgroundColor,
     titleBarStyle: 'hidden',
-    titleBarOverlay: { color: chrome.color, symbolColor: chrome.symbolColor, height: 36 },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -262,6 +366,14 @@ function createAppWindow(url) {
     }
   })
   appWindowUrl = url
+
+  // 自定义窗口按钮:最大化状态回传页面,切换 最大化/还原 图标
+  appWin.on('maximize', () => {
+    if (appWin && !appWin.isDestroyed()) appWin.webContents.send('dsh:maximized', true)
+  })
+  appWin.on('unmaximize', () => {
+    if (appWin && !appWin.isDestroyed()) appWin.webContents.send('dsh:maximized', false)
+  })
 
   // 弹窗一律交给系统浏览器,不在应用内开新窗口
   appWin.webContents.setWindowOpenHandler(({ url: target }) => {
@@ -283,13 +395,16 @@ function createAppWindow(url) {
     if (isMainFrame && code !== -3) {
       logLine(`主框架加载失败: ${code} ${desc} ${validatedURL}`)
     }
+    if (isMainFrame) finishSplashSwap()
   })
   appWin.webContents.on('render-process-gone', (_e, details) => {
     logLine(`渲染进程异常: ${details.reason}`)
   })
 
   if (settings.openDevTools) appWin.webContents.openDevTools({ mode: 'detach' })
-  appWin.once('ready-to-show', () => appWin && appWin.show())
+  appWin.once('ready-to-show', () => {
+    if (!deferShow && appWin) appWin.show()
+  })
   appWin.on('close', (event) => {
     if (appWin) {
       try {
@@ -311,20 +426,53 @@ function createAppWindow(url) {
   appWin.loadURL(url)
 }
 
+/** 关闭 splash 并显示主窗口(splash 覆盖交接点,消除空壳白屏闪烁)。 */
+function finishSplashSwap() {
+  if (!deferredShowPending) return
+  deferredShowPending = false
+  logLine('[chrome] 切换:关闭 splash,显示主窗口')
+  if (appWin && !appWin.isDestroyed()) appWin.show()
+  if (splashWin) {
+    splashWin.destroy()
+    splashWin = null
+  }
+}
+
 /** DSH 页面加载完成后:同步窗口按钮主题 + 注入拖拽条 + 记录布局校准数据。 */
 function prepareDshPage(win) {
   const wc = win.webContents
   wc.on('did-finish-load', () => {
+    // 延迟显示交接:DSH shell 是空的 #root,首帧是白屏;等 React 真正渲染出
+    // 内容再关闭 splash,保证 splash → 界面无缝切换。
+    if (deferredShowPending && win === appWin) {
+      if (wc.getURL().startsWith('file:')) {
+        finishSplashSwap() // 状态页为静态 HTML,可直接切换
+      } else {
+        const pollForContent = async () => {
+          if (!deferredShowPending || !appWin || appWin.isDestroyed()) return
+          let hasContent = false
+          try {
+            hasContent = await wc.executeJavaScript(
+              `!!(document.getElementById('root') && document.getElementById('root').childElementCount > 0)`
+            )
+          } catch {
+            /* 页面切换中,继续等待 */
+          }
+          if (hasContent) finishSplashSwap()
+          else setTimeout(pollForContent, 100)
+        }
+        pollForContent()
+      }
+    }
     if (!wc.getURL().startsWith('http')) return
 
-    // 1) 窗口按钮颜色跟随页面实际主题(亮/暗)
+    // 1) 窗口按钮颜色跟随页面实际主题(亮/暗)。preload 的 MutationObserver 会
+    //    持续上报变化,这里在 load 完成时再立即校正一次。
     wc
       .executeJavaScript(`document.body.hasAttribute('data-ds-dark-theme')`)
       .then((dark) => {
-        if (win.isDestroyed()) return
-        const overlay = dark ? CHROME_DARK : CHROME_LIGHT
-        win.setTitleBarOverlay({ color: overlay.color, symbolColor: overlay.symbolColor, height: 36 })
-        win.setBackgroundColor(overlay.backgroundColor)
+        logLine(`[chrome] load 时页面主题: ${dark ? 'dark' : 'light'}`)
+        if (!win.isDestroyed()) applyChrome(win, dark)
       })
       .catch(() => {})
 
@@ -340,6 +488,58 @@ function prepareDshPage(win) {
         return true;
       })()`)
       .catch(() => {})
+
+    // 2.5) 自定义窗口控制按钮:原生 WCO 的悬停高亮由系统绘制,无法与 DSH
+    //      组件一致;注入自绘按钮,颜色/悬停/关闭高亮直接复用 DSH 设计 token。
+    logLine('[chrome] 注入自定义窗口按钮…')
+    wc
+      .executeJavaScript(`(() => {
+        document.getElementById('dsh-window-controls')?.remove();
+        const host = document.createElement('div');
+        host.id = 'dsh-window-controls';
+        const style = document.createElement('style');
+        style.textContent = [
+          '#dsh-window-controls{position:fixed;top:0;right:0;height:36px;display:flex;align-items:stretch;z-index:2147483001;-webkit-app-region:no-drag;}',
+          '#dsh-window-controls button{width:46px;height:100%;display:inline-flex;align-items:center;justify-content:center;border:none;background:transparent;padding:0;margin:0;cursor:pointer;color:var(--dsw-alias-label-secondary);-webkit-app-region:no-drag;}',
+          '#dsh-window-controls button:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}',
+          '#dsh-window-controls button.close:hover{background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary);}',
+          '#dsh-window-controls svg{width:16px;height:16px;}'
+        ].join('\\n');
+        host.appendChild(style);
+        const icons = {
+          min: '<svg viewBox="0 0 16 16" fill="none"><path d="M4 8.5h8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+          max: '<svg viewBox="0 0 16 16" fill="none"><rect x="4.5" y="4.5" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.2"/></svg>',
+          restore: '<svg viewBox="0 0 16 16" fill="none"><path d="M6.5 4.5h4a1 1 0 0 1 1 1v4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><rect x="4.5" y="6.5" width="7" height="5" rx="1" stroke="currentColor" stroke-width="1.2"/></svg>',
+          close: '<svg viewBox="0 0 16 16" fill="none"><path d="M5 5l6 6M11 5l-6 6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>'
+        };
+        const make = (label, cls, svg) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = cls;
+          b.setAttribute('aria-label', label);
+          b.innerHTML = svg;
+          host.appendChild(b);
+          return b;
+        };
+        const btnMin = make('最小化', '', icons.min);
+        const btnMax = make('最大化', '', icons.max);
+        const btnClose = make('关闭', 'close', icons.close);
+        const api = window.dshWindow;
+        if (!api) { document.body.appendChild(host); return false; }
+        btnMin.addEventListener('click', () => api.minimize());
+        btnMax.addEventListener('click', () => api.toggleMaximize());
+        btnClose.addEventListener('click', () => api.close());
+        const applyMax = (maximized) => {
+          btnMax.innerHTML = maximized ? icons.restore : icons.max;
+          btnMax.setAttribute('aria-label', maximized ? '还原' : '最大化');
+        };
+        api.isMaximized().then(applyMax).catch(() => {});
+        api.onMaximized(applyMax);
+        document.body.appendChild(host);
+        return true;
+      })()`)
+      .then((ok) => logLine(`[chrome] 自定义窗口按钮注入: ${ok}`))
+      .catch((error) => logLine(`[chrome] 自定义窗口按钮注入失败: ${error.message}`))
 
     // 3) 布局校准数据(写入日志,便于后续调整拖拽条/按钮位置)
     setTimeout(() => {
@@ -369,9 +569,8 @@ function prepareDshPage(win) {
 /** 让某个窗口显示状态页(splash 与主窗口共用同一份 UI)。 */
 function showStatusPage(win) {
   if (!win) return
-  if (win.webContents.getURL() !== pathToFileURL(SPLASH_HTML).href) {
-    win.loadFile(SPLASH_HTML)
-  }
+  if (win.webContents.getURL().split('?')[0] === pathToFileURL(SPLASH_HTML).href) return
+  win.loadFile(SPLASH_HTML, { query: { theme: resolveThemeDark() ? 'dark' : 'light' } })
 }
 
 // ---------------------------------------------------------------- dsh wiring
@@ -396,11 +595,13 @@ function startManager() {
   manager.on('log', ({ line }) => broadcast({ kind: 'log', line }))
   manager.on('ready', ({ url }) => {
     logLine(`[dsh] 就绪: ${url}`)
+    // splash 仍可见时,主窗口延迟到内容渲染完成再显示,避免空壳白屏
+    const deferShow = !!splashWin && !hiddenToTray && !appWin
     if (appWin) {
       appWindowUrl = url
       appWin.loadURL(url).catch(() => {})
     } else if (!hiddenToTray) {
-      createAppWindow(url)
+      createAppWindow(url, { deferShow })
       prepareDshPage(appWin)
     }
     // 看门狗:主进程被强杀时兜底清理 dsh 进程树
@@ -415,7 +616,10 @@ function startManager() {
       }
       setTimeout(() => app.quit(), 9000)
     }
-    if (splashWin) {
+    if (deferShow) {
+      // 兜底:页面迟迟未就绪时,10s 后强制切换
+      setTimeout(finishSplashSwap, 10_000)
+    } else if (splashWin) {
       splashWin.destroy()
       splashWin = null
     }
@@ -458,8 +662,16 @@ function wireIpc() {
     url: manager ? manager.url : null,
     logs: manager ? manager.getLogs() : [],
     message: lastFailureMessage,
-    version: app.getVersion()
+    version: app.getVersion(),
+    theme: resolveThemeDark()
   }))
+  ipcMain.on('dsh:theme', (event, dark) => {
+    logLine(`[chrome] IPC 主题: ${dark ? 'dark' : 'light'}`)
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win && !win.isDestroyed()) {
+      applyChrome(win, Boolean(dark))
+    }
+  })
   ipcMain.on('dsh:restart', () => requestDshRestart())
   ipcMain.on('dsh:quit', () => app.quit())
   ipcMain.handle('dsh:copy-logs', () => {
@@ -475,6 +687,26 @@ function wireIpc() {
     } catch (error) {
       dialog.showErrorBox('无法打开日志目录', error.message)
     }
+  })
+  // 自定义窗口按钮(minimize / maximize / close)
+  ipcMain.on('dsh:minimize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win && !win.isDestroyed()) win.minimize()
+  })
+  ipcMain.on('dsh:toggle-maximize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win && !win.isDestroyed()) {
+      if (win.isMaximized()) win.unmaximize()
+      else win.maximize()
+    }
+  })
+  ipcMain.on('dsh:close', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win && !win.isDestroyed()) win.close()
+  })
+  ipcMain.handle('dsh:get-maximized', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    return !!(win && !win.isDestroyed() && win.isMaximized())
   })
 }
 
@@ -562,7 +794,9 @@ if (!gotLock) {
     else if (settings.dshCommand) logLine(`设置 dshCommand: ${settings.dshCommand}`)
     buildMenu()
     wireIpc()
+    watchTheme()
     createTray()
+    if (process.env.DSH_WINDOW_SMOKE) logLine('[smoke] 冒烟模式已开启')
     createSplashWindow()
     startManager()
     if (process.env.DSH_WINDOW_SMOKE) {
