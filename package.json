@@ -48,6 +48,7 @@
       "output": "dist"
     },
     "win": {
+      "icon": "assets/icon.ico",
       "target": [
         {
           "target": "nsis",
