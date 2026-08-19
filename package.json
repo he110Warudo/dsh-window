@@ -1,8 +1,7 @@
 {
   "name": "dsh-window",
   "version": "0.1.0",
-  "description": "DeepSeek Harness 窗口 GUI 客户端:双击启动,自动拉起 dsh web 并在应用窗口中打开",
-  "main": "electron/main.js",
+  "description": "DeepSeek Harness 窗口 GUI 客户端：基于 Tauri，自动拉起 dsh web 并在应用窗口中打开",
   "license": "MIT",
   "author": "dsh-window contributors",
   "repository": {
@@ -18,60 +17,23 @@
     "deepseek",
     "harness",
     "window",
-    "electron",
+    "tauri",
     "gui",
     "dsh-plugin"
   ],
   "scripts": {
-    "start": "electron .",
-    "test": "node --test --test-isolation=none test/dsh-manager.test.js",
+    "start": "tauri dev",
+    "test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "smoke": "node test/smoke-launch.js",
-    "dist": "electron-builder",
-    "dist:dir": "electron-builder --dir"
+    "prepare:sidecar": "node scripts/prepare-node-sidecar.js",
+    "dist": "npm run prepare:sidecar && tauri build",
+    "dist:dir": "npm run prepare:sidecar && tauri build --no-bundle"
   },
   "dependencies": {
     "@deepseek-ai/dsh": "0.1.0-rc.6"
   },
-  "build": {
-    "appId": "ai.deepseek.dshwindow",
-    "productName": "DSH Window",
-    "asar": false,
-    "npmRebuild": false,
-    "files": [
-      "electron/**/*",
-      "splash/**/*",
-      "assets/**/*",
-      "package.json",
-      "LICENSE"
-    ],
-    "directories": {
-      "output": "dist"
-    },
-    "win": {
-      "icon": "assets/icon.ico",
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
-        }
-      ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true
-    }
-  },
   "devDependencies": {
-    "electron": "^43.4.0",
-    "electron-builder": "^26.15.3"
+    "@tauri-apps/cli": "^2.11.4"
   },
   "allowScripts": {
     "@deepseek-ai/dsh-subprocess-local@0.1.0-rc.6": true,

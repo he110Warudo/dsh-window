@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"DSH Window 本地启动页与回环地址页面权限","local":true,"windows":["splash"],"permissions":["core:default"]}}
